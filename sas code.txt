@@ -1,0 +1,132 @@
+proc freq data=qyhlab.parkin;
+	tables subject_;
+run;
+
+proc univariate data=qyhlab.parkin;
+	variable test_time;
+run;
+
+data parkin_nw;
+	set qyhlab.parkin;
+	if test_time < 0 then delete;
+run;
+
+/* 正态性检验 */
+proc univariate data=parkin_nw normal plot;
+    var motor_UPDRS total_UPDRS;
+run;
+
+proc stdize data=parkin_nw;
+	var age test_time Jitter___ Jitter_Abs_ Jitter_RAP Jitter_DDP Jitter_PPQ5
+Shimmer Shimmer_dB_ Shimmer_APQ3 Shimmer_APQ5 Shimmer_APQ11 Shimmer_DDA NHR HNR RPDE DFA PPE;
+run;
+
+/*VIF值大于1表示存在共线性，通常阈值为5或10*/
+/*共线性诊断*/
+proc reg data=parkin_nw;
+    model motor_UPDRS total_UPDRS = age sex test_time Jitter___ Jitter_Abs_ Jitter_RAP Jitter_DDP Jitter_PPQ5
+Shimmer Shimmer_dB_ Shimmer_APQ3 Shimmer_APQ5 Shimmer_APQ11 Shimmer_DDA NHR HNR RPDE DFA PPE / vif dwprob; 
+run;
+
+proc reg data=data1;
+    model motor_UPDRS total_UPDRS = age sex test_time Jitter___ Jitter_Abs_ Jitter_RAP Jitter_DDP Jitter_PPQ5
+Shimmer Shimmer_dB_ Shimmer_APQ3 Shimmer_APQ5 Shimmer_APQ11 Shimmer_DDA NHR HNR RPDE DFA PPE / vif dwprob; 
+run;
+
+proc reg data=parkin_nw;
+    model motor_UPDRS = age sex test_time Jitter___ Jitter_Abs_ Jitter_RAP Jitter_DDP Jitter_PPQ5
+Shimmer Shimmer_dB_ Shimmer_APQ3 Shimmer_APQ5 Shimmer_APQ11 Shimmer_DDA NHR HNR RPDE DFA PPE; 
+	output out=p01 p=yhat;
+run;
+
+proc sgscatter data=p01;
+	matrix yhat motor_UPDRS;
+run;
+
+proc reg data=parkin_nw;
+    model total_UPDRS = age sex test_time Jitter___ Jitter_Abs_ Jitter_RAP Jitter_DDP Jitter_PPQ5
+Shimmer Shimmer_dB_ Shimmer_APQ3 Shimmer_APQ5 Shimmer_APQ11 Shimmer_DDA NHR HNR RPDE DFA PPE; 
+	output out=p02 p=yhat;
+run;
+
+proc sgscatter data=p02;
+	matrix yhat total_UPDRS;
+run;
+
+/*消除自相关性*/
+proc autoreg data=parkin_nw;
+    model motor_UPDRS= age sex test_time Jitter___ Jitter_Abs_ Jitter_RAP Jitter_DDP Jitter_PPQ5
+Shimmer Shimmer_dB_ Shimmer_APQ3 Shimmer_APQ5 Shimmer_APQ11 Shimmer_DDA NHR HNR RPDE DFA PPE / nlag=1 method=ml;
+	output out=p1 p=yhat;
+   run;
+
+proc sgscatter data=p1;
+	matrix yhat motor_UPDRS;
+run;
+
+proc autoreg data=parkin_nw;
+      model total_UPDRS= age sex test_time Jitter___ Jitter_Abs_ Jitter_RAP Jitter_DDP Jitter_PPQ5
+Shimmer Shimmer_dB_ Shimmer_APQ3 Shimmer_APQ5 Shimmer_APQ11 Shimmer_DDA NHR HNR RPDE DFA PPE / nlag=1 method=ml;
+	output out=p2 p=yhat;
+   run;
+
+proc sgscatter data=p2;
+	matrix yhat total_UPDRS;
+run;
+
+/*因子分析*/
+proc factor data =parkin_nw n=7 ROTATE=VARIMAX REORDER SCORE OUT=Out 
+plots=(scree);
+	variable Jitter___ Jitter_Abs_ Jitter_RAP Jitter_DDP Jitter_PPQ5
+Shimmer Shimmer_dB_ Shimmer_APQ3 Shimmer_APQ5 Shimmer_APQ11 Shimmer_DDA NHR HNR RPDE DFA PPE;
+run;
+
+proc corr data=out;
+	variable Factor1 Factor2 Factor3 Factor4 Factor5 Factor6 Factor7;
+run;
+
+proc autoreg data=out;
+      model motor_UPDRS= age sex test_time Factor1 Factor2 Factor3 Factor4 Factor5 Factor6 Factor7 / nlag=1  archtest=(lk,wl) ;
+	output out=p31 p=yhat;
+run;
+
+proc sgscatter data=p31;
+	matrix yhat motor_UPDRS;
+run;
+
+proc autoreg data=out;
+      model total_UPDRS= age sex test_time Factor1 Factor2 Factor3 Factor4 Factor5 Factor6 Factor7 / nlag=1 method=ml;
+	  output out=p32 p=yhat;
+run;
+
+proc sgscatter data=p32;
+	matrix yhat total_UPDRS;
+run;
+
+proc transreg data=out;
+    model boxcox(motor_UPDRS/lambda=-1 to 2 by 0.1)= 
+		identity (age) identity(sex)  identity(test_time) identity(factor1) identity(factor2)
+		identity (factor3) identity(factor4) identity(factor5) identity(factor6) identity(factor7);
+run;
+
+proc transreg data=out;
+    model boxcox(total_UPDRS/lambda=-1 to 2 by 0.1)= 
+		identity (age) identity(sex)  identity(test_time) identity(factor1) identity(factor2)
+		identity (factor3) identity(factor4) identity(factor5) identity(factor6) identity(factor7);
+run;
+
+data out1;
+	set out;
+	motor_UPDRS1=(motor_UPDRS**0.7-1)/0.7;
+	total_UPDRS1=(total_UPDRS**0.6-1)/0.6;
+run;
+
+proc autoreg data=out1;
+      model motor_UPDRS1= age sex test_time Factor1 Factor2 Factor3 Factor4 Factor5 Factor6 Factor7 / nlag=1 method=ml;
+	  output out=p312 p=yhat;
+run;
+
+proc autoreg data=out1;
+      model total_UPDRS1= age sex test_time Factor1 Factor2 Factor3 Factor4 Factor5 Factor6 Factor7 / nlag=1 method=ml;
+	  output out=p322 p=yhat;
+run;
